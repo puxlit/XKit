@@ -1,10 +1,10 @@
-#xkit-post-separator {
+#xkit-separator-line {
+	border-top: 1px dotted rgba(0, 0, 0, 0.33);
+	border-bottom: 1px dotted rgba(255, 255, 255, 0.23);
+	margin: 0 0 20px;
+}
 
-	border-top: 1px dotted rgba(0,0,0,0.33);
-	border-bottom: 1px dotted rgba(255,255,255,0.23);
-	height: 0px;
-	overflow: hidden;
-	margin-top: 10px;
-	margin-bottom: 20px;
-
+#xkit-separator-line.xkit-separator-bold-line {
+	border-top: 3px solid rgba(255, 255, 255, 0.33);
+	border-bottom: none;
 }
