@@ -8,3 +8,15 @@
 	border-top: 3px solid rgba(255, 255, 255, 0.33);
 	border-bottom: none;
 }
+
+#xkit-separator-controls > li.item {
+	border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+#xkit-separator-controls > li.item > a {
+	color: rgba(255, 255, 255, 0.6);
+	display: block;
+	padding: 0 10px;
+	line-height: 36px;
+	font-weight: 700;
+}

@@ -133,9 +133,19 @@ XKit.extensions.separator = (function() {
 					if (Number.isSafeInteger(signedPostId)) {
 						const postId = Math.abs(signedPostId);
 						if (Math.sign(signedPostId) === 1) {
-							augmentWithAdjacencyHints = (cursors, [oldestWitnessedPostId, newestWitnessedPostId]) => { return [oldestWitnessedPostId, postId]; };
+							augmentWithAdjacencyHints = (cursors, [oldestWitnessedPostId, newestWitnessedPostId]) => {
+								if (indexOfIntervalContainingValue(cursors.witnessedPostIds, postId) !== -1) {
+									return [oldestWitnessedPostId, postId];
+								}
+								return [oldestWitnessedPostId, newestWitnessedPostId];
+							};
 						} else {
-							augmentWithAdjacencyHints = (cursors, [oldestWitnessedPostId, newestWitnessedPostId]) => { return [postId, newestWitnessedPostId]; };
+							augmentWithAdjacencyHints = (cursors, [oldestWitnessedPostId, newestWitnessedPostId]) => {
+								if (indexOfIntervalContainingValue(cursors.witnessedPostIds, postId) !== -1) {
+									return [postId, newestWitnessedPostId];
+								}
+								return [oldestWitnessedPostId, newestWitnessedPostId];
+							};
 						}
 					}
 				}
@@ -155,6 +165,36 @@ XKit.extensions.separator = (function() {
 				XKit.storage.set("separator", "cursors:dashboard", JSON.stringify([goalPostId, witnessedPostIds]));
 			};
 
+			const addControls = (controls, cursors) => {
+				// The goal post ID should never be `null` after we’ve performed the initial reconciliation, but whatever.
+				if (cursors.goalPostId !== null) {
+					const jump = document.createElement("li");
+					jump.className = "item";
+
+					const jumpAnchor = document.createElement("a");
+					// We’ll assume nobody’s ever gonna be 1000 posts behind _and_ willing to work their way back through more than 100 pages in one go.
+					// Note that if we reached the goal post during initial reconciliation, then the URL will point to the new goal post, but the handler will take us to the old goal post.
+					jumpAnchor.href = `/dashboard/100/${cursors.goalPostId + 1}`;
+					jumpAnchor.textContent = "Go to last viewed post";
+					jumpAnchor.addEventListener("click", (event) => {
+						const line = document.getElementById("xkit-separator-line");
+						if (line !== null) {
+							event.preventDefault();
+							// The separator’s offset parent should be `body`.
+							// We’ve hard-coded an adjustment of 74 px to account for the header (54 px) and margin between posts (20 px).
+							$("html, body").animate({
+								"scrollTop": line.offsetTop - 74,
+							}, 333);
+						}
+					});
+					jump.appendChild(jumpAnchor);
+
+					// The jump control isn’t terribly useful when endless scrolling is on, since there’s no way to go load newer posts.
+					// Perhaps we should warn users of this limitation.
+					controls.appendChild(jump);
+				}
+			};
+
 			return {
 				"shouldContinue": true,
 				"mayDefer": where.endless,
@@ -162,6 +202,7 @@ XKit.extensions.separator = (function() {
 				augmentWithAdjacencyHints,
 				loadCursors,
 				saveCursors,
+				addControls,
 			};
 		}
 
@@ -328,7 +369,7 @@ XKit.extensions.separator = (function() {
 	function run() {
 		running = true;
 
-		const {shouldContinue, mayDefer, isFirstPage, augmentWithAdjacencyHints, loadCursors, saveCursors} = initContext();
+		const {shouldContinue, mayDefer, isFirstPage, augmentWithAdjacencyHints, loadCursors, saveCursors, addControls} = initContext();
 		if (!shouldContinue) { return; }
 
 		XKit.tools.init_css("separator");
@@ -351,6 +392,25 @@ XKit.extensions.separator = (function() {
 					XKit.post_listener.remove("separator");
 				}
 			});
+		}
+
+		if (showControls) {
+			// Hopefully the radar is a reliably ever-present element.
+			const radar = document.querySelector("#right_column > .controls_section_radar");
+			if (radar !== null) {
+				const controls = document.createElement("ul");
+				controls.id = "xkit-separator-controls";
+				controls.className = "controls_section";
+
+				const controlsHeader = document.createElement("li");
+				controlsHeader.className = "section_header";
+				controlsHeader.textContent = "Separator";
+				controls.appendChild(controlsHeader);
+
+				addControls(controls, cursors);
+
+				radar.parentElement.insertBefore(controls, radar);
+			}
 		}
 	}
 
