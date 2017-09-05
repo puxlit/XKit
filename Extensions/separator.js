@@ -1,7 +1,7 @@
 //* TITLE Separator **//
 //* VERSION 2.0.0 **//
 //* DESCRIPTION Marks where you left off on your dashboard **//
-//* DEVELOPER STUDIOXENIX **//
+//* DEVELOPER new-xkit **//
 //* FRAME false **//
 //* SLOW false **//
 //* BETA false **//
@@ -230,7 +230,7 @@ XKit.extensions.separator = (function() {
 	}
 
 	function enumerateDashboardPostIds() {
-		const postElems = document.querySelectorAll("#posts > .post_container > .post:not(.new_post_buttons)");
+		const postElems = document.querySelectorAll("#posts > .post_container > .post:not(.new_post_buttons):not(.sponsored_post)");
 		const postIds = [];
 		let prevPostId = Number.POSITIVE_INFINITY;
 		for (const postElem of postElems) {
