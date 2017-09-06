@@ -113,6 +113,19 @@ XKit.extensions.separator = (function() {
 			}
 			return ((goalPostId === null) && (witnessedPostIds.length === 0));
 		}
+		function validTaggedCursors({goalPostId, witnessedPostIds, adjacencyHints}) {
+			if (!validCursors({goalPostId, witnessedPostIds})) { return false; }
+			if (!(!!adjacencyHints && (adjacencyHints.constructor === Map))) { return false; }
+			if (witnessedPostIds.length === 0) {
+				return (adjacencyHints.size === 0);
+			}
+			for (const [timestamp, postId] of adjacencyHints) {
+				if (!(isSafePositiveInteger(timestamp) && isSafePositiveInteger(postId))) { return false; }
+				// We should only be storing hints mapping to posts that we’ve witnessed.
+				if (indexOfIntervalContainingValue(witnessedPostIds, postId) === -1) { return false; }
+			}
+			return true;
+		}
 
 		const where = XKit.interface.where();
 
@@ -200,6 +213,89 @@ XKit.extensions.separator = (function() {
 				"mayDefer": where.endless,
 				isFirstPage,
 				augmentWithAdjacencyHints,
+				"updateAdjacencyHints": (cursors, postIds) => {},
+				loadCursors,
+				saveCursors,
+				addControls,
+			};
+		}
+
+		if (where.tagged) {
+			// For tagged views, we need to massage the tag into a canonical form.
+			//
+			// At the time of writing, the URL path is _not_ reliably canonicalised.
+			// For instance, </tagged/foo+bar>, </tagged/foo%20bar>, and </tagged/FoO-BaR> all redirect to </tagged/foo-bar>.
+			// However, the path to the next page of results (when endless scrolling is off) is </tagged/foo+bar>.
+			// Furthermore, leading and trailing “spaces” are retained, to varying extents.
+			// For instance, </tagged/+foo-bar-> does not redirect. However, </tagged/+foo-bar%20-> redirects to </tagged/foo-bar-->.
+			//
+			// Rather than writing (and messing up) our own canonicaliser, we’re gonna read from an element that _appears_ to be reliably consistent.
+			const tagElem = document.querySelector("#right_column > .tag_controls .tag");
+			if (tagElem === null) {
+				throw new Error("Failed to locate tag element");
+			}
+			const tag = tagElem.textContent.trim();
+			const storageKey = `cursors:tagged:${btoa(tag)}`;
+
+			let isFirstPage = true;
+			let augmentWithAdjacencyHints = (cursors, witnessedPostIds) => { return witnessedPostIds; };
+
+			// This approach isn’t foolproof.
+			// For instance, a future timestamp would mean we’re actually on the first page.
+			const pageTimestamp = Number(new URLSearchParams(document.location.search).get("before"));
+			if (isSafePositiveInteger(pageTimestamp)) {
+				isFirstPage = false;
+				augmentWithAdjacencyHints = (cursors, [oldestWitnessedPostId, newestWitnessedPostId]) => {
+					const postId = cursors.adjacencyHints.get(pageTimestamp);
+					if ((postId !== undefined) && (indexOfIntervalContainingValue(cursors.witnessedPostIds, postId) !== -1)) {
+						return [oldestWitnessedPostId, postId];
+					}
+					return [oldestWitnessedPostId, newestWitnessedPostId];
+				};
+			}
+
+			const updateAdjacencyHints = ({witnessedPostIds, adjacencyHints}, postIds) => {
+				if (witnessedPostIds.length === 0) {
+					adjacencyHints.clear();
+				} else {
+					const nextPage = document.getElementById("next_page_link");
+					if (nextPage !== null) {
+						const nextPageTimestamp = Number(new URLSearchParams(nextPage.search).get("before"));
+						if (isSafePositiveInteger(nextPageTimestamp)) {
+							const oldestWitnessedPostId = postIds[postIds.length - 1];
+							adjacencyHints.set(nextPageTimestamp, oldestWitnessedPostId);
+						}
+					}
+					// We could also prune any timestamp-to-post-ID entries where the post ID doesn’t lie on the endpoint of an interval.
+				}
+			};
+
+			const loadCursors = () => {
+				const [goalPostId, witnessedPostIds, rawAdjacencyHints] = JSON.parse(XKit.storage.get("separator", storageKey, "[null,[],[]]"));
+				const adjacencyHints = new Map(rawAdjacencyHints);
+				if (!validTaggedCursors({goalPostId, witnessedPostIds, adjacencyHints})) {
+					throw new Error("Loaded invalid cursors");
+				}
+				return {goalPostId, witnessedPostIds, adjacencyHints};
+			};
+			const saveCursors = ({goalPostId, witnessedPostIds, adjacencyHints}) => {
+				if (!validTaggedCursors({goalPostId, witnessedPostIds, adjacencyHints})) {
+					throw new Error("Attempted to save invalid cursors");
+				}
+				const rawAdjacencyHints = Array.from(adjacencyHints);
+				XKit.storage.set("separator", storageKey, JSON.stringify([goalPostId, witnessedPostIds, rawAdjacencyHints]));
+			};
+
+			// We can’t really jump to the separator without a reliable mechanism for determining the goal post’s timestamp.
+			// That’s a skirmish for another day.
+			const addControls = (controls, cursors) => {};
+
+			return {
+				"shouldContinue": true,
+				"mayDefer": where.endless,
+				isFirstPage,
+				augmentWithAdjacencyHints,
+				updateAdjacencyHints,
 				loadCursors,
 				saveCursors,
 				addControls,
@@ -250,7 +346,7 @@ XKit.extensions.separator = (function() {
 		return postIds;
 	}
 
-	function reconcile(cursors, postIds, saveCursors, isFirstPage, augmentWithAdjacencyHints, initial) {
+	function reconcile(cursors, postIds, initial, isFirstPage, augmentWithAdjacencyHints, updateAdjacencyHints, saveCursors) {
 		// Updates (and saves) `cursors` based on `postIds`.
 		//
 		// Returns:
@@ -261,7 +357,10 @@ XKit.extensions.separator = (function() {
 		// Assumed preconditions:
 		//   - `cursors` is valid;
 		//   - `postIds` is a reverse sorted array of safe positive integers representing posts loaded into the DOM; and
-		//   - `saveCursors` and `augmentWithAdjacencyHints` are valid functions.
+		//   - `augmentWithAdjacencyHints`, `updateAdjacencyHints`, and `saveCursors` are valid functions.
+		//
+		// Other assumptions:
+		//   - we need only update adjacency hints if `cursors` actually changes.
 
 		if (postIds.length === 0) {
 			// We could legitimately be dealing with an empty context, or we could be glitched.
@@ -272,6 +371,8 @@ XKit.extensions.separator = (function() {
 		if (initial && (cursors.goalPostId === null)) {
 			// Looks like this is the first time we’ve visited this context.
 			// We’ll set the goal post to the newest witnessed post.
+			// `cursors.witnessedPostIds` should be empty, since we started off with a valid `cursors`.
+			// Consequently, we shouldn’t need to update adjacency hints.
 			const newestWitnessedPostId = postIds[0];
 			cursors.goalPostId = newestWitnessedPostId;
 			saveCursors(cursors);
@@ -292,8 +393,10 @@ XKit.extensions.separator = (function() {
 				if (isFirstPage) {
 					// Looks like the original goal post was deleted.
 					// We’ll reset the goal post to whatever is newest on this first page.
+					// Since we’re clearing `cursors.witnessedPostIds`, we’ll also need to clear out the now-stale adjacency hints.
 					cursors.goalPostId = newestWitnessedPostId;
 					cursors.witnessedPostIds = [];
+					updateAdjacencyHints(cursors, postIds);
 					saveCursors(cursors);
 					return newestWitnessedPostId;
 				}
@@ -317,7 +420,10 @@ XKit.extensions.separator = (function() {
 
 		if (index === -1) {
 			// “Are we there _yet_?” / “Yes.” / “Really?” / “NO!”
-			if (cursorsUpdated) { saveCursors(cursors); }
+			if (cursorsUpdated) {
+				updateAdjacencyHints(cursors, postIds);
+				saveCursors(cursors);
+			}
 			return RECONCILE_DEFER;
 		}
 
@@ -338,6 +444,7 @@ XKit.extensions.separator = (function() {
 		const newGoalPostId = cursors.witnessedPostIds[0][1];
 		cursors.goalPostId = newGoalPostId;
 		cursors.witnessedPostIds.shift();
+		updateAdjacencyHints(cursors, postIds);
 		saveCursors(cursors);
 
 		return bestGoalPostId;
@@ -369,7 +476,12 @@ XKit.extensions.separator = (function() {
 	function run() {
 		running = true;
 
-		const {shouldContinue, mayDefer, isFirstPage, augmentWithAdjacencyHints, loadCursors, saveCursors, addControls} = initContext();
+		const {
+			shouldContinue, mayDefer, isFirstPage,
+			augmentWithAdjacencyHints, updateAdjacencyHints,
+			loadCursors, saveCursors,
+			addControls,
+		} = initContext();
 		if (!shouldContinue) { return; }
 
 		XKit.tools.init_css("separator");
@@ -377,14 +489,14 @@ XKit.extensions.separator = (function() {
 		upgradeStorage();
 		const cursors = loadCursors();
 		const initialPostIds = enumerateDashboardPostIds();
-		const initialGoalPostId = reconcile(cursors, initialPostIds, saveCursors, isFirstPage, augmentWithAdjacencyHints, true);
+		const initialGoalPostId = reconcile(cursors, initialPostIds, true, isFirstPage, augmentWithAdjacencyHints, updateAdjacencyHints, saveCursors);
 		if (isSafePositiveInteger(initialGoalPostId)) {
 			insertSeparatorBeforePost(initialGoalPostId);
 		} else if (mayDefer && (initialGoalPostId === RECONCILE_DEFER)) {
 			XKit.post_listener.add("separator", () => {
 				const updatedPostIds = enumerateDashboardPostIds();
 				// TODO: Handle exceptions (by removing the post listener), or make `reconcile` less dramatic.
-				const updatedGoalPostId = reconcile(cursors, updatedPostIds, saveCursors, isFirstPage, augmentWithAdjacencyHints, false);
+				const updatedGoalPostId = reconcile(cursors, updatedPostIds, false, isFirstPage, augmentWithAdjacencyHints, updateAdjacencyHints, saveCursors);
 				if (isSafePositiveInteger(updatedGoalPostId)) {
 					insertSeparatorBeforePost(updatedGoalPostId);
 					// With endless scrolling, witnessing new posts still requires a reload.
