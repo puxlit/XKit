@@ -29,17 +29,13 @@
 //     They might also _go_ missing should Tumblr change their URL patterns.
 //   - When the same context is open in multiple tabs, behaviour may seem unpredictable.
 
-XKit.extensions.separator = (function() {
-	"use strict";
+"use strict";
 
-	// Immutables
-	const DASHBOARD_PATH_REGEX = /^\/dashboard(?:\/(?:([2-9]|[1-9]\d+)\/(-?[1-9]\d*)\/?)?)?$/;
+XKit.extensions.separator = (function() {
 	const LATEST_STORAGE_VERSION = 2;
-	const POST_ID_REGEX = /^[1-9]\d*$/;
 	const RECONCILE_ABORT = 0;
 	const RECONCILE_DEFER = -1;
 
-	// Mutables
 	let running = false;
 	let drawBoldLine = false;
 	let showControls = false;
@@ -47,7 +43,7 @@ XKit.extensions.separator = (function() {
 	// Generic helper functions
 
 	function isSafePositiveInteger(value) {
-		return (Number.isSafeInteger(value) && (Math.sign(value) === 1));
+		return (Number.isSafeInteger(value) && (value > 0));
 	}
 
 	function areSortedDisjointSafeIntegerIntervals(intervals) {
@@ -134,32 +130,29 @@ XKit.extensions.separator = (function() {
 			let augmentWithAdjacencyHints = (cursors, witnessedPostIds) => { return witnessedPostIds; };
 
 			// This approach isn’t foolproof.
-			// Tolerable URL paths are actually laxer than the defined pattern, but should never be seen in normal usage.
-			// For instance, page numbers may have leading zeroes.
-			// Also, a future post ID would mean we’re actually on the first page.
-			const pathGroups = location.pathname.match(DASHBOARD_PATH_REGEX);
-			if (pathGroups !== null) {
-				if ((pathGroups[1] === null) && (pathGroups[2] === null)) {
-					isFirstPage = true;
-				} else {
-					const signedPostId = Number(pathGroups[2]);
-					if (Number.isSafeInteger(signedPostId)) {
-						const postId = Math.abs(signedPostId);
-						if (Math.sign(signedPostId) === 1) {
-							augmentWithAdjacencyHints = (cursors, [oldestWitnessedPostId, newestWitnessedPostId]) => {
-								if (indexOfIntervalContainingValue(cursors.witnessedPostIds, postId) !== -1) {
-									return [oldestWitnessedPostId, postId];
-								}
-								return [oldestWitnessedPostId, newestWitnessedPostId];
-							};
-						} else {
-							augmentWithAdjacencyHints = (cursors, [oldestWitnessedPostId, newestWitnessedPostId]) => {
-								if (indexOfIntervalContainingValue(cursors.witnessedPostIds, postId) !== -1) {
-									return [postId, newestWitnessedPostId];
-								}
-								return [oldestWitnessedPostId, newestWitnessedPostId];
-							};
-						}
+			// For instance, a future post ID would mean we’re actually on the first page.
+			const [,, rawPageNumber, rawSignedPostId] = document.location.pathname.split("/");
+			const pageNumber = Number(rawPageNumber);
+			if (!(isSafePositiveInteger(pageNumber) && (pageNumber > 1))) {
+				isFirstPage = true;
+			} else {
+				const signedPostId = Number(rawSignedPostId);
+				if (Number.isSafeInteger(signedPostId) && (signedPostId !== 0)) {
+					const postId = Math.abs(signedPostId);
+					if (signedPostId > 0) {
+						augmentWithAdjacencyHints = (cursors, [oldestWitnessedPostId, newestWitnessedPostId]) => {
+							if (indexOfIntervalContainingValue(cursors.witnessedPostIds, postId) !== -1) {
+								return [oldestWitnessedPostId, postId];
+							}
+							return [oldestWitnessedPostId, newestWitnessedPostId];
+						};
+					} else {
+						augmentWithAdjacencyHints = (cursors, [oldestWitnessedPostId, newestWitnessedPostId]) => {
+							if (indexOfIntervalContainingValue(cursors.witnessedPostIds, postId) !== -1) {
+								return [postId, newestWitnessedPostId];
+							}
+							return [oldestWitnessedPostId, newestWitnessedPostId];
+						};
 					}
 				}
 			}
@@ -330,14 +323,11 @@ XKit.extensions.separator = (function() {
 		const postIds = [];
 		let prevPostId = Number.POSITIVE_INFINITY;
 		for (const postElem of postElems) {
-			if (!POST_ID_REGEX.test(postElem.dataset.id)) {
+			const postId = Number(postElem.dataset.id);
+			if (!isSafePositiveInteger(postId)) {
 				throw new Error("Failed to extract valid ID from post element");
 			}
-			const postId = Number(postElem.dataset.id);
-			if (!Number.isSafeInteger(postId)) {
-				throw new Error("Encountered post with much larger ID than expected");
-			}
-			if (prevPostId <= postId) {
+			if (postId >= prevPostId) {
 				throw new Error("Encountered post that violates the expectation that posts must be ordered by strictly decreasing IDs");
 			}
 			postIds.push(postId);
@@ -360,7 +350,8 @@ XKit.extensions.separator = (function() {
 		//   - `augmentWithAdjacencyHints`, `updateAdjacencyHints`, and `saveCursors` are valid functions.
 		//
 		// Other assumptions:
-		//   - we need only update adjacency hints if `cursors` actually changes.
+		//   - we need only update adjacency hints if `cursors` actually changes; and
+		//   - when loading older posts via endless scrolling, each `post_listener` update will always have some overlap with the previous update.
 
 		if (postIds.length === 0) {
 			// We could legitimately be dealing with an empty context, or we could be glitched.
@@ -434,7 +425,7 @@ XKit.extensions.separator = (function() {
 
 		// Find the best goal post ID from `postIds`.
 		let bestGoalPostId = postIds[postIds.length - 1];
-		for (let i = postIds.length - 2; -1 < i; --i) {
+		for (let i = postIds.length - 2; i > -1; --i) {
 			const postId = postIds[i];
 			if (cursors.goalPostId < postId) { break; }
 			bestGoalPostId = postId;
