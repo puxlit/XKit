@@ -323,6 +323,7 @@ XKit.extensions.separator = (function() {
 		const postIds = [];
 		let prevPostId = Number.POSITIVE_INFINITY;
 		for (const postElem of postElems) {
+			if (postElem.querySelector("a.recommendation-reason-link[data-trending-id=\"staff-picks\"]") !== null) { continue; }
 			const postId = Number(postElem.dataset.id);
 			if (!isSafePositiveInteger(postId)) {
 				throw new Error("Failed to extract valid ID from post element");
