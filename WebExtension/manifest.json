@@ -3,9 +3,9 @@
     "all_frames": true,
     "run_at": "document_end",
     "css": [ "xkit.css" ],
-    "exclude_matches": [ "https://www.tumblr.com/upload/image*, http://www.tumblr.com/upload/image*" ],
+    "exclude_matches": [ "*://assets.tumblr.com/*", "*://www.tumblr.com/upload/image*" ],
     "js": [ "bridge.js", "lodash.min.js", "jquery.js", "tiptip.js", "moment.js", "nano.js", "xkit.js" ],
-    "matches": [ "http://*.tumblr.com/*", "https://*.tumblr.com/*" ]
+    "matches": [ "*://*.tumblr.com/*" ]
   } ],
   "description": "A fork of XKit, the extension framework for Tumblr.",
   "homepage_url": "https://github.com/new-xkit/XKit",
