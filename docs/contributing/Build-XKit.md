@@ -93,6 +93,8 @@ See also: [`gulp build`](#gulp-build), [`gulp build:webext`](#gulp-buildwebext),
 
 Creates an archive, `new-xkit-x.x.x.zip`, from an existing Chrome/Firefox source build and outputs it to `build/webext/`.
 
+For releases, signed XPIs (for Firefox) are prepared by [submitting](https://developer.mozilla.org/en-US/Add-ons/Distribution) this archive to AMO.
+
 See also: [`gulp build`](#gulp-build), [`gulp build:webext`](#gulp-buildwebext), [`gulp copy:webext`](#gulp-copywebext).
 
 #### `gulp build:safari`
