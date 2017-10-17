@@ -1,0 +1,27 @@
+{
+    "forin"         : false,
+    "browser"       : false,
+    "devel"         : false,
+    "jquery"        : true,
+    "nonstandard"   : true,
+    "laxbreak"      : true,
+    "lastsemic"     : true,
+    "indent"        : 1,
+    "globals": {
+      "console"             : true,
+      "document"            : true,
+      "jQuery"              : true,
+      "$"                   : true,
+      "XKit"                : true,
+      "Tumblr"              : true,
+      "GM_flushStorage"     : true,
+      "GM_deleteAllValues"  : true,
+      "GM_getValue"         : true,
+      "GM_deleteValue"      : true,
+      "GM_setValue"         : true,
+      "GM_log"              : true,
+      "GM_openInTab"        : true,
+      "GM_listValues"       : true,
+      "GM_xmlhttpRequest"   : true
+    }
+}

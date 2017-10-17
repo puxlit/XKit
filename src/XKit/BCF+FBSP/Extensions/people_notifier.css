@@ -1,0 +1,76 @@
+#xkit-people-notifier-no-blogs {
+	text-align: center;
+	padding: 8px;
+	font-size: 12px;
+	color: rgba(255,255,255,0.55);
+}
+
+.xkit-people-notifier-person a {
+	position: relative;
+	height: 100%;
+	display: block;
+}
+
+.xkit-people-notifier-person {
+	cursor: move;
+	cursor: grab;
+	cursor: -moz-grab;
+	cursor: -webkit-grab;
+}
+
+.xkit-people-notifier-person:active {
+	cursor: grabbing !important;
+	cursor: -moz-grabbing !important;
+	cursor: -webkit-grabbing !important;
+}
+
+.xkit-people-notifier-person .hide_overflow {
+	width: 125px;
+}
+
+.xkit-people-notifier-person .people-notifier-avatar {
+	position: absolute;
+	top: 50%; left: 18px;
+	margin-top: -9px;
+	box-shadow: inset 0px 1px 4px rgba(0,0,0,0.33), 0px 1px 0px rgba(255,255,255,0.19);
+	border-radius: 3px;
+	border: 1px solid #233950;
+	width: 16px; height: 16px;
+}
+
+.xkit-people-notifier-person a:after {
+	background: none !important;
+	display: block;
+	height: 100%;
+	position: relative;
+}
+
+.identity .controls_section .xkit-people-notifier-person a .count,
+.xkit-people-notifier-person .close,
+.xkit-people-notifier-person .drag {
+	float: right;
+	top: 50% !important;
+	display: block;
+	height: 13px;
+	margin-top: -11px;
+	font-size: 13px;
+	position: absolute;
+}
+
+.xkit-people-notifier-person .close {
+	cursor: pointer;
+	right: 10px;
+}
+
+.xkit-people-notifier-person .drag {
+	padding-left: 4px;
+}
+
+.dashboard_useraction_following .xkit-people-notifier-person:hover,
+.dashboard_useraction_following .xkit-people-notifier-new:hover {
+	background: rgba(0,0,0,0.025) !important;
+}
+
+.dashboard_useraction_following.identity .controls_section a .count {
+	color: #444 !important;
+}
