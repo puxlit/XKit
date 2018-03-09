@@ -28,6 +28,18 @@
 //     Hints might be missing if we manually browse to a page’s URL.
 //     They might also _go_ missing should Tumblr change their URL patterns.
 //   - When the same context is open in multiple tabs, behaviour may seem unpredictable.
+//
+// # Checklist
+//   - [ ] Refactor once I eventually get around to adding separator support for channel views.
+//   - [ ] Check for whether this extension conflicts with any of the other extensions.
+//   - [ ] Add a per-context reset control (so users needn’t wipe the entire extension’s settings).
+//   - [ ] Add a per-context enable/disable control (so users can opt in/out of placing separators on the dashboard or specific tags).
+//   - [ ] Add visual indicators (so users know which posts have been witnessed, and roughly how far they are from the separator).
+//   - [ ] Deal with post IDs occasionally breaking the (assumed) strictly decreasing invariant.
+//         I’ve seen this a couple of times in tagged views; the “out-of-order” posts seem to share the same timestamp.
+//         My money is on those posts being queued (and thus having pre-assigned IDs), coupled with the views using timestamp ordering (and not ID ordering as first thought).
+//   - [ ] Explore alternative approaches to tracking witnessed posts.
+//         Per-post tracking would reduce confusion when switching contexts.
 
 "use strict";
 
