@@ -59,11 +59,13 @@ XKit.extensions.separator = (function() {
 	}
 
 	function isSnowflake(value) {
-		return ((typeof value === "bigint") && (value < (2n ** 64n)) && (value > -1));
+		// eslint-disable-next-line valid-typeof
+		return ((typeof value === "bigint") && (value < (BigInt(2) ** BigInt(64))) && (value > -1));
 	}
 
 	function isPositiveSnowflake(value) {
-		return ((typeof value === "bigint") && (value < (2n ** 64n)) && (value > 0));
+		// eslint-disable-next-line valid-typeof
+		return ((typeof value === "bigint") && (value < (BigInt(2) ** BigInt(64))) && (value > 0));
 	}
 
 	function areSortedDisjointSnowflakeIntervals(intervals) {
@@ -125,7 +127,7 @@ XKit.extensions.separator = (function() {
 		function validCursors({goalPostId, witnessedPostIds}) {
 			if (!Array.isArray(witnessedPostIds)) { return false; }
 			if (isPositiveSnowflake(goalPostId)) {
-				return areSortedDisjointSnowflakeIntervals([[0n, goalPostId], ...witnessedPostIds]);
+				return areSortedDisjointSnowflakeIntervals([[BigInt(0), goalPostId], ...witnessedPostIds]);
 			}
 			return ((goalPostId === null) && (witnessedPostIds.length === 0));
 		}
@@ -205,7 +207,7 @@ XKit.extensions.separator = (function() {
 					const jumpAnchor = document.createElement("a");
 					// We’ll assume nobody’s ever gonna be 1000 posts behind _and_ willing to work their way back through more than 100 pages in one go.
 					// Note that if we reached the goal post during initial reconciliation, then the URL will point to the new goal post, but the handler will take us to the old goal post.
-					jumpAnchor.href = `/dashboard/100/${cursors.goalPostId + 1n}`;
+					jumpAnchor.href = `/dashboard/100/${cursors.goalPostId + BigInt(1)}`;
 					jumpAnchor.textContent = "Go to last viewed post";
 					jumpAnchor.addEventListener("click", (event) => {
 						const line = document.getElementById("xkit-separator-line");
