@@ -58,23 +58,31 @@ XKit.extensions.separator = (function() {
 		return (Number.isSafeInteger(value) && (value > 0));
 	}
 
-	function areSortedDisjointSafeIntegerIntervals(intervals) {
+	function isSnowflake(value) {
+		return ((typeof value === "bigint") && (value < (2n ** 64n)) && (value > -1));
+	}
+
+	function isPositiveSnowflake(value) {
+		return ((typeof value === "bigint") && (value < (2n ** 64n)) && (value > 0));
+	}
+
+	function areSortedDisjointSnowflakeIntervals(intervals) {
 		if (!Array.isArray(intervals)) { return false; }
 		let prevUpperEndpoint = Number.NEGATIVE_INFINITY;
 		for (const interval of intervals) {
 			if (!(Array.isArray(interval) && (interval.length === 2))) { return false; }
 			const [lowerEndpoint, upperEndpoint] = interval;
-			if (!(Number.isSafeInteger(lowerEndpoint) && Number.isSafeInteger(upperEndpoint))) { return false; }
+			if (!(isSnowflake(lowerEndpoint) && isSnowflake(upperEndpoint))) { return false; }
 			if (!((prevUpperEndpoint < lowerEndpoint) && (lowerEndpoint < upperEndpoint))) { return false; }
 			prevUpperEndpoint = upperEndpoint;
 		}
 		return true;
 	}
 
-	function addToSortedDisjointSafeIntegerIntervals(intervals, interval) {
+	function addToSortedDisjointSnowflakeIntervals(intervals, interval) {
 		// Assumed preconditions:
-		//   - `intervals` is a sorted disjoint set of safe integer intervals; and
-		//   - `interval` is a safe integer interval.
+		//   - `intervals` is a sorted disjoint set of snowflake intervals; and
+		//   - `interval` is a snowflake interval.
 		let spliceStart = 0, spliceDeleteCount = 0;
 		let preservedEndpoints = 0;
 		let [newLowerEndpoint, newUpperEndpoint] = interval;
@@ -100,8 +108,8 @@ XKit.extensions.separator = (function() {
 
 	function indexOfIntervalContainingValue(intervals, value) {
 		// Assumed preconditions:
-		//   - `intervals` is a sorted disjoint set of safe integer intervals; and
-		//   - `value` is a safe integer.
+		//   - `intervals` is a sorted disjoint set of snowflake intervals; and
+		//   - `value` is a snowflake.
 		let index = 0;
 		for (const [lowerEndpoint, upperEndpoint] of intervals) {
 			if (upperEndpoint < value) { ++index; continue; }
@@ -116,8 +124,8 @@ XKit.extensions.separator = (function() {
 	function initContext() {
 		function validCursors({goalPostId, witnessedPostIds}) {
 			if (!Array.isArray(witnessedPostIds)) { return false; }
-			if (isSafePositiveInteger(goalPostId)) {
-				return areSortedDisjointSafeIntegerIntervals([[0, goalPostId], ...witnessedPostIds]);
+			if (isPositiveSnowflake(goalPostId)) {
+				return areSortedDisjointSnowflakeIntervals([[0n, goalPostId], ...witnessedPostIds]);
 			}
 			return ((goalPostId === null) && (witnessedPostIds.length === 0));
 		}
@@ -128,7 +136,7 @@ XKit.extensions.separator = (function() {
 				return (adjacencyHints.size === 0);
 			}
 			for (const [timestamp, postId] of adjacencyHints) {
-				if (!(isSafePositiveInteger(timestamp) && isSafePositiveInteger(postId))) { return false; }
+				if (!(isSafePositiveInteger(timestamp) && isPositiveSnowflake(postId))) { return false; }
 				// We should only be storing hints mapping to posts that we’ve witnessed.
 				if (indexOfIntervalContainingValue(witnessedPostIds, postId) === -1) { return false; }
 			}
@@ -148,9 +156,9 @@ XKit.extensions.separator = (function() {
 			if (!(isSafePositiveInteger(pageNumber) && (pageNumber > 1))) {
 				isFirstPage = true;
 			} else {
-				const signedPostId = Number(rawSignedPostId);
-				if (Number.isSafeInteger(signedPostId) && (signedPostId !== 0)) {
-					const postId = Math.abs(signedPostId);
+				const signedPostId = BigInt(rawSignedPostId);
+				const postId = (signedPostId >= 0) ? signedPostId : -signedPostId;
+				if (isPositiveSnowflake(postId)) {
 					if (signedPostId > 0) {
 						augmentWithAdjacencyHints = (cursors, [oldestWitnessedPostId, newestWitnessedPostId]) => {
 							if (indexOfIntervalContainingValue(cursors.witnessedPostIds, postId) !== -1) {
@@ -170,17 +178,22 @@ XKit.extensions.separator = (function() {
 			}
 
 			const loadCursors = () => {
-				const [goalPostId, witnessedPostIds] = JSON.parse(XKit.storage.get("separator", "cursors:dashboard", "[null,[]]"));
+				let [goalPostId, witnessedPostIds] = JSON.parse(XKit.storage.get("separator", "cursors:dashboard", "[null,[]]"));
+				if (goalPostId !== null) { goalPostId = BigInt(goalPostId); }
+				witnessedPostIds = witnessedPostIds.map(([le, ue]) => [BigInt(le), BigInt(ue)]);
 				if (!validCursors({goalPostId, witnessedPostIds})) {
 					throw new Error("Loaded invalid cursors");
 				}
 				return {goalPostId, witnessedPostIds};
 			};
 			const saveCursors = ({goalPostId, witnessedPostIds}) => {
-				if (!validCursors({goalPostId, witnessedPostIds})) {
+				if (!((goalPostId !== null) && validCursors({goalPostId, witnessedPostIds}))) {
 					throw new Error("Attempted to save invalid cursors");
 				}
-				XKit.storage.set("separator", "cursors:dashboard", JSON.stringify([goalPostId, witnessedPostIds]));
+				XKit.storage.set("separator", "cursors:dashboard", JSON.stringify([
+					goalPostId.toString(),
+					witnessedPostIds.map(([le, ue]) => [le.toString(), ue.toString()]),
+				]));
 			};
 
 			const addControls = (controls, cursors) => {
@@ -192,7 +205,7 @@ XKit.extensions.separator = (function() {
 					const jumpAnchor = document.createElement("a");
 					// We’ll assume nobody’s ever gonna be 1000 posts behind _and_ willing to work their way back through more than 100 pages in one go.
 					// Note that if we reached the goal post during initial reconciliation, then the URL will point to the new goal post, but the handler will take us to the old goal post.
-					jumpAnchor.href = `/dashboard/100/${cursors.goalPostId + 1}`;
+					jumpAnchor.href = `/dashboard/100/${cursors.goalPostId + 1n}`;
 					jumpAnchor.textContent = "Go to last viewed post";
 					jumpAnchor.addEventListener("click", (event) => {
 						const line = document.getElementById("xkit-separator-line");
@@ -276,19 +289,25 @@ XKit.extensions.separator = (function() {
 			};
 
 			const loadCursors = () => {
-				const [goalPostId, witnessedPostIds, rawAdjacencyHints] = JSON.parse(XKit.storage.get("separator", storageKey, "[null,[],[]]"));
-				const adjacencyHints = new Map(rawAdjacencyHints);
+				let [goalPostId, witnessedPostIds, rawAdjacencyHints] = JSON.parse(XKit.storage.get("separator", storageKey, "[null,[],[]]"));
+				if (goalPostId !== null) { goalPostId = BigInt(goalPostId); }
+				witnessedPostIds = witnessedPostIds.map(([le, ue]) => [BigInt(le), BigInt(ue)]);
+				const adjacencyHints = new Map(rawAdjacencyHints.map(([ts, pid]) => [ts, BigInt(pid)]));
 				if (!validTaggedCursors({goalPostId, witnessedPostIds, adjacencyHints})) {
 					throw new Error("Loaded invalid cursors");
 				}
 				return {goalPostId, witnessedPostIds, adjacencyHints};
 			};
 			const saveCursors = ({goalPostId, witnessedPostIds, adjacencyHints}) => {
-				if (!validTaggedCursors({goalPostId, witnessedPostIds, adjacencyHints})) {
+				if (!((goalPostId !== null) && validTaggedCursors({goalPostId, witnessedPostIds, adjacencyHints}))) {
 					throw new Error("Attempted to save invalid cursors");
 				}
-				const rawAdjacencyHints = Array.from(adjacencyHints);
-				XKit.storage.set("separator", storageKey, JSON.stringify([goalPostId, witnessedPostIds, rawAdjacencyHints]));
+				const rawAdjacencyHints = Array.from(adjacencyHints).map(([ts, pid]) => [ts, pid.toString()]);
+				XKit.storage.set("separator", storageKey, JSON.stringify([
+					goalPostId.toString(),
+					witnessedPostIds.map(([le, ue]) => [le.toString(), ue.toString()]),
+					rawAdjacencyHints,
+				]));
 			};
 
 			// We can’t really jump to the separator without a reliable mechanism for determining the goal post’s timestamp.
@@ -321,8 +340,8 @@ XKit.extensions.separator = (function() {
 				// Storage should be in v1 format; upgrading to v2 format.
 				const lastPost = XKit.storage.get("separator", "last_post");
 				XKit.storage.remove("separator", "last_post");
-				if (isSafePositiveInteger(lastPost)) {
-					XKit.storage.set("separator", "cursors:dashboard", JSON.stringify([lastPost, []]));
+				if (isPositiveSnowflake(lastPost)) {
+					XKit.storage.set("separator", "cursors:dashboard", JSON.stringify([lastPost.toString(), []]));
 				}
 			}
 
@@ -331,13 +350,13 @@ XKit.extensions.separator = (function() {
 	}
 
 	function enumerateDashboardPostIds() {
-		const postElems = document.querySelectorAll("#posts > .post_container > .post:not(.new_post_buttons):not(.sponsored_post)");
+		const postElems = document.querySelectorAll("#posts > .post_container > .post:not(.new_post_buttons):not(.sponsored_post):not(.is_recommended)");
 		const postIds = [];
 		let prevPostId = Number.POSITIVE_INFINITY;
 		for (const postElem of postElems) {
 			if (postElem.querySelector("a.recommendation-reason-link[data-trending-id=\"staff-picks\"]") !== null) { continue; }
-			const postId = Number(postElem.dataset.id);
-			if (!isSafePositiveInteger(postId)) {
+			const postId = BigInt(postElem.dataset.id);
+			if (!isPositiveSnowflake(postId)) {
 				throw new Error("Failed to extract valid ID from post element");
 			}
 			if (postId >= prevPostId) {
@@ -359,7 +378,7 @@ XKit.extensions.separator = (function() {
 		//
 		// Assumed preconditions:
 		//   - `cursors` is valid;
-		//   - `postIds` is a reverse sorted array of safe positive integers representing posts loaded into the DOM; and
+		//   - `postIds` is a reverse sorted array of positive snowflakes representing posts loaded into the DOM; and
 		//   - `augmentWithAdjacencyHints`, `updateAdjacencyHints`, and `saveCursors` are valid functions.
 		//
 		// Other assumptions:
@@ -384,7 +403,7 @@ XKit.extensions.separator = (function() {
 		}
 
 		// We should have a valid goal post from here on out.
-		if (!isSafePositiveInteger(cursors.goalPostId)) {
+		if (!isPositiveSnowflake(cursors.goalPostId)) {
 			throw new Error("Invariants broken");
 		}
 
@@ -419,7 +438,7 @@ XKit.extensions.separator = (function() {
 			throw new Error("Invariants broken");
 		}
 
-		const cursorsUpdated = addToSortedDisjointSafeIntegerIntervals(cursors.witnessedPostIds, [oldestWitnessedPostId, newestWitnessedPostId]);
+		const cursorsUpdated = addToSortedDisjointSnowflakeIntervals(cursors.witnessedPostIds, [oldestWitnessedPostId, newestWitnessedPostId]);
 		const index = indexOfIntervalContainingValue(cursors.witnessedPostIds, cursors.goalPostId);
 
 		if (index === -1) {
@@ -456,7 +475,7 @@ XKit.extensions.separator = (function() {
 
 	function insertSeparatorBeforePost(postId) {
 		// Assumed preconditions:
-		//   - `postId` is a safe positive integer.
+		//   - `postId` is a positive snowflake.
 
 		if (document.getElementById("xkit-separator-line") !== null) {
 			throw new Error("Separator already exists");
@@ -494,14 +513,14 @@ XKit.extensions.separator = (function() {
 		const cursors = loadCursors();
 		const initialPostIds = enumerateDashboardPostIds();
 		const initialGoalPostId = reconcile(cursors, initialPostIds, true, isFirstPage, augmentWithAdjacencyHints, updateAdjacencyHints, saveCursors);
-		if (isSafePositiveInteger(initialGoalPostId)) {
+		if (isPositiveSnowflake(initialGoalPostId)) {
 			insertSeparatorBeforePost(initialGoalPostId);
 		} else if (mayDefer && (initialGoalPostId === RECONCILE_DEFER)) {
 			XKit.post_listener.add("separator", () => {
 				const updatedPostIds = enumerateDashboardPostIds();
 				// TODO: Handle exceptions (by removing the post listener), or make `reconcile` less dramatic.
 				const updatedGoalPostId = reconcile(cursors, updatedPostIds, false, isFirstPage, augmentWithAdjacencyHints, updateAdjacencyHints, saveCursors);
-				if (isSafePositiveInteger(updatedGoalPostId)) {
+				if (isPositiveSnowflake(updatedGoalPostId)) {
 					insertSeparatorBeforePost(updatedGoalPostId);
 					// With endless scrolling, witnessing new posts still requires a reload.
 					// Since the cursors won’t change until we witness new posts, we no longer need this listener.
